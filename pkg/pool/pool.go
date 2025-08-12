@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.uber.org/zap"
+	"slgGame/pkg/log"
 	"sync"
 	"time"
 )
@@ -270,8 +272,15 @@ func (p *Pool) Shutdown(ctx context.Context) error {
 var goPool = newPool(10, 100, 1000, 10*time.Minute, 10*time.Second)
 
 func StopGoPool() {
-	goPool.Shutdown(context.Background())
+	er := goPool.Shutdown(context.Background())
+	if er != nil {
+		log.Error("shutdown go pool ", zap.String("er", er.Error()))
+	}
 }
+
 func Go(fn JobFunc) {
-	goPool.submit(context.Background(), 0, fn)
+	_, er := goPool.submit(context.Background(), 0, fn)
+	if er != nil {
+		log.Error("submit go task ", zap.String("er", er.Error()))
+	}
 }

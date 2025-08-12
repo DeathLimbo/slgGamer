@@ -1,15 +1,32 @@
 package log
 
 import (
+	"context"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"os"
+	"slgGame/pkg/pool"
 	"time"
 )
 
 type BaseLogger struct {
 	*zap.Logger
+	ch chan func()
+}
+
+func (a *BaseLogger) start() {
+	for fn := range a.ch {
+		fn()
+	}
+}
+
+func (a *BaseLogger) addLog(f func()) {
+	t := time.After(time.Second)
+	select {
+	case <-t:
+	case a.ch <- f:
+	}
 }
 
 var logger *BaseLogger
@@ -26,7 +43,15 @@ func init() {
 
 	zapLogger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 
-	logger = &BaseLogger{zapLogger}
+	logger = &BaseLogger{
+		Logger: zapLogger,
+		ch:     make(chan func(), 1024),
+	}
+
+	pool.Go(func(ctx context.Context) (interface{}, error) {
+		logger.start()
+		return nil, nil
+	})
 }
 
 func initZapLogLev(level string) zapcore.Level {
@@ -79,7 +104,21 @@ func initJsonCfg() zapcore.EncoderConfig {
 }
 
 // 快捷调用
-func Debug(msg string, fields ...zap.Field) { logger.Debug(msg, fields...) }
-func Info(msg string, fields ...zap.Field)  { logger.Info(msg, fields...) }
-func Warn(msg string, fields ...zap.Field)  { logger.Warn(msg, fields...) }
-func Error(msg string, fields ...zap.Field) { logger.Error(msg, fields...) }
+func Debug(msg string, fields ...zap.Field) {
+	logger.addLog(func() {
+		logger.Debug(msg, fields...)
+	})
+}
+func Info(msg string, fields ...zap.Field) {
+	logger.addLog(func() { logger.Info(msg, fields...) })
+}
+
+func Warn(msg string, fields ...zap.Field) {
+	logger.addLog(func() { logger.Warn(msg, fields...) })
+}
+
+func Error(msg string, fields ...zap.Field) {
+	logger.addLog(func() {
+		logger.Error(msg, fields...)
+	})
+}
